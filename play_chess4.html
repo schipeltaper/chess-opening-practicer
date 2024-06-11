@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Chess App</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.2/chess.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.js"></script>
+    <style>
+        #board {
+            margin: 20px auto;
+        }
+        button {
+            display: block;
+            width: 200px;
+            padding: 10px;
+            margin: 20px auto;
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div id="board" style="width: 400px"></div>
+    <button onclick="window.location.href='practice_ground19.html';">Analyse your own repertoire</button>
+    <button onclick="window.location.href='rapid1.html';">Rapid practice</button>
+    <script>
+        var board = null;
+        var game = new Chess();
+        
+        function onDrop(source, target, piece, newPos, oldPos, orientation) {
+            var move = game.move({
+                from: source,
+                to: target,
+                promotion: 'q' // NOTE: Always promote to a queen for simplicity
+            });
+
+            if (move === null) return 'snapback'; // illegal move
+            updateStatus();
+        }
+
+        function updateStatus() {
+            var status = '';
+            var moveColor = 'White';
+            if (game.turn() === 'b') {
+                moveColor = 'Black';
+            }
+            if (game.in_checkmate()) {
+                status = 'Game over, ' + moveColor + ' is in checkmate.';
+            } else if (game.in_draw()) {
+                status = 'Game over, drawn position';
+            } else {
+                status = moveColor + ' to move';
+                if (game.in_check()) {
+                    status += ', ' + moveColor + ' is in check';
+                }
+            }
+            console.log(status);
+        }
+
+        var config = {
+            draggable: true,
+            position: 'start',
+            pieceTheme: function(piece) {
+                return 'https://raw.githubusercontent.com/lichess-org/lila/master/public/piece/alpha/' + piece + '.svg';
+            },
+            onDrop: onDrop,
+            onSnapEnd: function() {
+                board.position(game.fen());
+            }
+        };
+        board = Chessboard('board', config);
+        updateStatus();
+    </script>
+</body>
+</html>

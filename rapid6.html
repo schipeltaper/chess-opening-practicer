@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chess Opening Practice</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.2/chess.min.js"></script>
+    <script src="stockfish-nnue-16.js"></script> <!-- Add Stockfish JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.js"></script>
+    <style>
+        #board {
+            margin: 20px auto;
+        }
+        #status {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 16px;
+            color: green;
+        }
+        #playerColor {
+            text-align: center;
+            font-size: 16px;
+            color: green;
+            margin-top: 10px;
+        }
+        #expectedMove {
+            text-align: center;
+            font-size: 14px;
+            color: blue;
+            margin-top: 10px;
+            visibility: hidden; /* Initially hidden */
+        }
+        #doneMessage {
+            text-align: center;
+            font-size: 16px;
+            color: green;
+            margin-top: 10px;
+            visibility: hidden; /* Initially hidden */
+        }
+        #newGameButton {
+            display: block;
+            margin: 20px auto;
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        #newGameButton:hover {
+            background-color: #45a049;
+        }
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1;
+            padding-top: 100px;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgb(0,0,0);
+            background-color: rgba(0,0,0,0.4);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 400px;
+            text-align: center;
+        }
+        .modal-button {
+            margin: 10px;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            border: none;
+            border-radius: 5px;
+        }
+        .white-button {
+            background-color: #f0f0f0;
+            color: black;
+        }
+        .black-button {
+            background-color: #333;
+            color: white;
+        }
+        .random-button {
+            background-color: #4CAF50;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div id="board" style="width: 400px"></div>
+    <div id="status">Ready to make your move according to the repertoire.</div>
+    <div id="playerColor">You play: </div>
+    <div id="expectedMove">Expected opponent move: </div>
+    <div id="doneMessage">Well done! ✓</div>
+    <button id="newGameButton">New Game</button>
+
+    <!-- Modal -->
+    <div id="colorModal" class="modal">
+        <div class="modal-content">
+            <p>With which pieces do you want to play?</p>
+            <button class="modal-button white-button" onclick="setPlayerColor('white')">White</button>
+            <button class="modal-button black-button" onclick="setPlayerColor('black')">Black</button>
+            <button class="modal-button random-button" onclick="setPlayerColor('random')">Random</button>
+        </div>
+    </div>
+
+    <script>
+        var board = null; // Chessboard instance
+        var game = new Chess(); // Chess game instance
+        var statusEl = document.getElementById('status'); // Status element
+        var playerColorEl = document.getElementById('playerColor'); // Player color element
+        var expectedMoveEl = document.getElementById('expectedMove'); // Expected move element
+        var doneMessageEl = document.getElementById('doneMessage'); // Done message element
+        var newGameButton = document.getElementById('newGameButton'); // New game button
+        var currentPath = []; // Array to track the current path of moves
+        var playerColor = 'white'; // Default player color, will be set by modal
+        var inRepertoire = true; // Track if the game is within the repertoire
+        var stockfish = new Worker('stockfish-nnue-16.js'); // Initialize Stockfish
+
+        // Embedded repertoire data
+        var repertoire = {
+            "white": {
+                "e4": {
+                    "e5": {
+                        "Nf3": {
+                            "Nc6": {
+                                "Bc4": {}
+                            },
+                            "Nf6": {
+                                "Nxe5": {}
+                            }
+                        }
+                    }
+                }
+            },
+            "black": {
+                "e4": {
+                    "e5": {
+                        "Nf3": {
+                            "Nc6": {
+                                "Bc4": {}
+                            }
+                        },
+                        "Nc6": {
+                            "Nf3": {}
+                        }
+                    }
+                },
+                "c4": {
+                    "e5": {
+                        "Nf3": {
+                            "Nc6": {
+                                "Nf6": {}
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        // Triggered when Stockfish sends a message
+        stockfish.onmessage = function(event) {
+            // Tries to match the Stockfish response to find the best move
+            var match = event.data.match(/^bestmove\s(\w{4})/);
+            if (match) {
+                // If a best move is found, make the move on the board
+                var move = game.move({
+                    from: match[1].substring(0, 2), // First two characters are the 'from' square
+                    to: match[1].substring(2, 4),   // Last two characters are the 'to' square
+                    promotion: 'q' // Assume promotion to queen for simplicity
+                });
+
+                // Add the move to the current path
+                currentPath.push(move.san);
+
+                // Update the board position
+                board.position(game.fen());
+                // Update the status to show the AI's move
+                updateStatus('AI Move: ' + match[1], false);
+                // Update the expected move based on the new position
+                updateExpectedMove();
+            }
+        };
+
+        // Triggered when a player makes a move
+        function onDrop(source, target, piece, newPos, oldPos, orientation) {
+            var move = game.move({
+                from: source,
+                to: target,
+                promotion: 'q'
+            });
+
+            // If the move is illegal, snap the piece back to its original position
+            if (move === null) {
+                updateStatus('Illegal move, try again.', true);
+                return 'snapback';
+            }
+
+            // Check if the player's move is in the repertoire
+            if (game.turn() !== playerColor[0] && inRepertoire && !isMoveInRepertoire(move.san)) {
+                game.undo();
+                updateStatus('Wrong move! Try again.', true);
+                return 'snapback';
+            }
+
+            // Add the move to the current path
+            currentPath.push(move.san);
+            // Update the board position
+            board.position(game.fen());
+            // Update the status to show the player's move
+            updateStatus('Move: ' + move.san, false);
+            // Update the expected move based on the new position
+            updateExpectedMove();
+
+            // If it's the AI's turn, make the AI move
+            if (game.turn() !== playerColor[0]) {
+                stockfish.postMessage('position fen ' + game.fen());
+                stockfish.postMessage('go movetime 1000'); // Let Stockfish think for 1 second
+            }
+        }
+
+        // Update the status text
+        function updateStatus(text, isError) {
+            statusEl.textContent = text;
+            statusEl.style.color = isError ? 'red' : 'green';
+        }
+
+        // Update the expected move text
+        function updateExpectedMove() {
+            if (!inRepertoire) {
+                expectedMoveEl.style.visibility = 'hidden';
+                return;
+            }
+
+            // Traverse the repertoire based on the current path of moves
+            let node = repertoire[playerColor];
+            for (let move of currentPath) {
+                if (node && node[move]) {
+                    node = node[move];
+                } else {
+                    node = undefined;
+                    break;
+                }
+            }
+
+            // Get the list of possible moves from the current node
+            let moves = node ? Object.keys(node) : [];
+
+            // Update the expected move text based on the current position
+            if (moves.length > 0 && game.turn() !== playerColor[0]) {
+                expectedMoveEl.style.visibility = 'visible';
+                expectedMoveEl.textContent = "Expected opponent move: " + moves.join(", ");
+                doneMessageEl.style.visibility = 'hidden';
+            } 
+            else if (moves.length == 0) {
+                expectedMoveEl.style.visibility = 'hidden';
+                doneMessageEl.style.visibility = 'visible';
+                updateStatus('Well done! ✓', false);
+                inRepertoire = false;
+            } else {
+                expectedMoveEl.style.visibility = 'hidden';
+                doneMessageEl.style.visibility = 'hidden';
+            }
+        }
+
+        // Check if a move is in the repertoire
+        function isMoveInRepertoire(move) {
+            let node = repertoire[playerColor];
+            for (let m of currentPath) {
+                node = node[m];
+                if (!node) return false;
+            }
+            return !!node[move];
+        }
+
+        // Initialize the chessboard
+        function initializeBoard() {
+            var config = {
+                draggable: true,
+                position: 'start',
+                pieceTheme: function(piece) {
+                    return 'https://raw.githubusercontent.com/lichess-org/lila/master/public/piece/alpha/' + piece + '.svg';
+                },
+                onDrop: onDrop,
+                onSnapEnd: function() {
+                    board.position(game.fen());
+                }
+            };
+            board = Chessboard('board', config);
+            updateStatus('Ready to play!', false);
+            playerColorEl.textContent = 'You play: ' + (playerColor === 'white' ? 'White' : 'Black');
+
+            // Make Stockfish play the first move if it plays as white
+            if (playerColor === 'black') {
+                stockfish.postMessage('position startpos');
+                stockfish.postMessage('go movetime 1000');
+            }
+        }
+
+        // Reset the game
+        function resetGame() {
+            game.reset();
+            currentPath = [];
+            inRepertoire = true;
+            showColorModal();
+            updateExpectedMove();
+            doneMessageEl.style.visibility = 'hidden';
+        }
+
+        // Show the color selection modal
+        function showColorModal() {
+            document.getElementById('colorModal').style.display = 'block';
+        }
+
+        // Set the player's color
+        function setPlayerColor(color) {
+            if (color === 'random') {
+                playerColor = Math.random() < 0.5 ? 'white' : 'black';
+            } else {
+                playerColor = color;
+            }
+            document.getElementById('colorModal').style.display = 'none';
+            initializeBoard();
+            updateExpectedMove();
+        }
+
+        // Initialize the board when the document is ready
+        $(document).ready(function() {
+            console.log("Document ready, initializing the chess board.");
+            showColorModal();
+        });
+
+        // Add event listener to the new game button
+        newGameButton.addEventListener('click', resetGame);
+    </script>
+</body>
+</html>
