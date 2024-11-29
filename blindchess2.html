@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Speech-to-Text</title>
+</head>
+<body>
+    <h1>Speech-to-Text Demo</h1>
+    <button id="record-btn">Start Recording</button>
+    <p id="status">Not recording</p>
+    <form id="audio-form" method="POST" enctype="multipart/form-data" action="/transcribe">
+        <input type="file" id="audio-file" name="audio" hidden>
+        <button type="submit">Transcribe</button>
+    </form>
+    <p id="result">Transcription will appear here</p>
+
+    <script>
+        let mediaRecorder;
+        let audioChunks = [];
+        const recordBtn = document.getElementById("record-btn");
+        const status = document.getElementById("status");
+        const audioFileInput = document.getElementById("audio-file");
+
+        recordBtn.addEventListener("click", async () => {
+            if (!mediaRecorder || mediaRecorder.state === "inactive") {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
+                mediaRecorder.onstop = () => {
+                    const audioBlob = new Blob(audioChunks, { type: "audio/wav" });
+                    const file = new File([audioBlob], "audio.wav", { type: "audio/wav" });
+                    audioFileInput.files = new DataTransfer().items.add(file);
+                    status.textContent = "Recording stopped. Ready to transcribe.";
+                };
+                mediaRecorder.start();
+                status.textContent = "Recording...";
+                recordBtn.textContent = "Stop Recording";
+            } else {
+                mediaRecorder.stop();
+                recordBtn.textContent = "Start Recording";
+            }
+        });
+    </script>
+</body>
+</html>
