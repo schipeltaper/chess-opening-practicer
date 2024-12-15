@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blind Chess Game</title>
+</head>
+<body>
+    <h1>Play Blind Chess Against GPT</h1>
+
+    <!-- API Key Section -->
+    <h2>Enter Your OpenAI API Key</h2>
+    <form id="api-key-form">
+        <label for="api-key">API Key:</label>
+        <input type="password" id="api-key" name="api-key" required>
+        <button type="submit">Save API Key</button>
+    </form>
+    <p id="api-status">API Key not set.</p>
+
+    <!-- Game Info Section -->
+    <h2>Game Information</h2>
+    <p id="game-status">Game has not started yet.</p>
+    <button id="start-game-btn">Start Game</button>
+
+    <!-- Recording Section -->
+    <h2>Record Your Move</h2>
+    <button id="record-btn" disabled>Start Recording</button>
+    <button id="submit-btn" disabled>Submit</button>
+    <p id="status">Not recording</p>
+
+    <!-- Conversation Section -->
+    <h2>Game Log</h2>
+    <p id="transcription-result">Transcription will appear here</p>
+    <p id="gpt-response">GPT's response will appear here</p>
+
+    <!-- Pause Button -->
+    <button id="pause-btn" disabled>Pause Game</button>
+
+    <script>
+        let apiKey = '';
+        let mediaRecorder;
+        let audioChunks = [];
+        let audioBlob;
+        let userColor = '';
+        let gptColor = '';
+
+        const apiKeyForm = document.getElementById("api-key-form");
+        const recordBtn = document.getElementById("record-btn");
+        const submitBtn = document.getElementById("submit-btn");
+        const startGameBtn = document.getElementById("start-game-btn");
+        const pauseBtn = document.getElementById("pause-btn");
+        const status = document.getElementById("status");
+        const gameStatus = document.getElementById("game-status");
+        const transcriptionResult = document.getElementById("transcription-result");
+        const gptResponse = document.getElementById("gpt-response");
+
+        // Handle API key submission
+        apiKeyForm.addEventListener("submit", (event) => {
+            event.preventDefault();
+            const apiKeyInput = document.getElementById("api-key").value.trim();
+            if (apiKeyInput) {
+                apiKey = apiKeyInput;
+                document.getElementById("api-status").textContent = "API Key set successfully.";
+                apiKeyForm.reset();
+                startGameBtn.disabled = false;
+            } else {
+                alert("Please enter a valid API key.");
+            }
+        });
+
+        // Start game
+        startGameBtn.addEventListener("click", async () => {
+            try {
+                const response = await fetch("/start_game", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                });
+
+                const result = await response.json();
+                userColor = result.user_color;
+                gptColor = result.gpt_color;
+                gameStatus.textContent = `Game started! You are playing as ${userColor}. GPT is ${gptColor}.`;
+                recordBtn.disabled = false;
+            } catch (error) {
+                console.error("Error starting game:", error);
+                gameStatus.textContent = "Error starting game. Please try again.";
+            }
+        });
+
+        // Handle recording functionality
+        recordBtn.addEventListener("click", async () => {
+            if (!mediaRecorder || mediaRecorder.state === "inactive") {
+                try {
+                    audioChunks = [];
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    mediaRecorder = new MediaRecorder(stream);
+
+                    mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
+                    mediaRecorder.onstop = () => {
+                        audioBlob = new Blob(audioChunks, { type: "audio/wav" });
+                        status.textContent = "Recording stopped. Ready to submit.";
+                        submitBtn.disabled = false;
+                    };
+
+                    mediaRecorder.start();
+                    status.textContent = "Recording...";
+                    recordBtn.textContent = "Stop Recording";
+                } catch (err) {
+                    console.error("Error accessing microphone:", err);
+                    status.textContent = "Error: Unable to access microphone.";
+                }
+            } else {
+                mediaRecorder.stop();
+                recordBtn.textContent = "Start Recording";
+            }
+        });
+
+        // Handle submission for move
+        submitBtn.addEventListener("click", async () => {
+            if (!apiKey) {
+                alert("Please set your API key first.");
+                return;
+            }
+
+            if (!audioBlob) {
+                alert("No recording found to process.");
+                return;
+            }
+
+            status.textContent = "Processing your move...";
+            const formData = new FormData();
+            const file = new File([audioBlob], "whisper.wav", { type: "audio/wav" });
+            formData.append("file", file);
+
+            try {
+                // Step 1: Transcribe audio via Whisper API
+                const sttResponse = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+                    method: "POST",
+                    headers: {
+                        Authorization: `Bearer ${apiKey}`,
+                    },
+                    body: formData,
+                });
+
+                if (!sttResponse.ok) {
+                    throw new Error("Failed to transcribe audio.");
+                }
+
+                const sttResult = await sttResponse.json();
+                const transcription = sttResult.text;
+                transcriptionResult.textContent = `You said: ${transcription}`;
+
+                // Step 2: Submit move to backend
+                const moveResponse = await fetch("/make_move", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        move: transcription,
+                        api_key: apiKey,
+                    }),
+                });
+
+                if (!moveResponse.ok) {
+                    throw new Error("Invalid move or backend error.");
+                }
+
+                const moveResult = await moveResponse.json();
+                gptResponse.textContent = `GPT says: ${moveResult.user_message}`;
+                status.textContent = "Move processed successfully.";
+
+                // Play TTS
+                const ttsResponse = await fetch("/tts", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/x-www-form-urlencoded",
+                    },
+                    body: new URLSearchParams({ text: moveResult.user_message }),
+                });
+
+                if (!ttsResponse.ok) {
+                    throw new Error("Failed to process TTS.");
+                }
+
+                const ttsBlob = await ttsResponse.blob();
+                const ttsAudio = new Audio(URL.createObjectURL(ttsBlob));
+                ttsAudio.play();
+            } catch (error) {
+                console.error("Error:", error);
+                status.textContent = "An error occurred. Please try again.";
+            }
+        });
+
+        // Pause game
+        pauseBtn.addEventListener("click", () => {
+            status.textContent = "Game paused.";
+            transcriptionResult.textContent = "";
+            gptResponse.textContent = "";
+            audioBlob = null;
+            submitBtn.disabled = true;
+            pauseBtn.disabled = true;
+        });
+    </script>
+</body>
+</html>

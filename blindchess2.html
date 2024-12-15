@@ -6,7 +6,7 @@
     <title>Speech-to-Text</title>
 </head>
 <body>
-    <h1>Speech-to-Text Demo</h1>
+    <h1>Speech-to-Text Demo!</h1>
     <button id="record-btn">Start Recording</button>
     <p id="status">Not recording</p>
     <form id="audio-form" method="POST" enctype="multipart/form-data" action="/transcribe">
@@ -24,19 +24,43 @@
 
         recordBtn.addEventListener("click", async () => {
             if (!mediaRecorder || mediaRecorder.state === "inactive") {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                mediaRecorder = new MediaRecorder(stream);
-                mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
-                mediaRecorder.onstop = () => {
-                    const audioBlob = new Blob(audioChunks, { type: "audio/wav" });
-                    const file = new File([audioBlob], "audio.wav", { type: "audio/wav" });
-                    audioFileInput.files = new DataTransfer().items.add(file);
-                    status.textContent = "Recording stopped. Ready to transcribe.";
-                };
-                mediaRecorder.start();
-                status.textContent = "Recording...";
-                recordBtn.textContent = "Stop Recording";
+                try {
+                    // Clear previous audio chunks
+                    audioChunks = [];
+
+                    // Request microphone access
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+                    // Initialize media recorder
+                    mediaRecorder = new MediaRecorder(stream);
+
+                    // Handle data available event
+                    mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
+
+                    // Handle recording stop event
+                    mediaRecorder.onstop = () => {
+                        const audioBlob = new Blob(audioChunks, { type: "audio/wav" });
+                        const file = new File([audioBlob], "audio.wav", { type: "audio/wav" });
+
+                        // Attach file to the hidden input
+                        const dataTransfer = new DataTransfer();
+                        dataTransfer.items.add(file);
+                        audioFileInput.files = dataTransfer.files;
+
+                        status.textContent = "Recording stopped. Ready to transcribe.";
+                        recordBtn.textContent = "Start Recording";
+                    };
+
+                    // Start recording
+                    mediaRecorder.start();
+                    status.textContent = "Recording...";
+                    recordBtn.textContent = "Stop Recording";
+                } catch (err) {
+                    console.error("Error accessing microphone:", err);
+                    status.textContent = "Error: Unable to access microphone.";
+                }
             } else {
+                // Stop recording
                 mediaRecorder.stop();
                 recordBtn.textContent = "Start Recording";
             }

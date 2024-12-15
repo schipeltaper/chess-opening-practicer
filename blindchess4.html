@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blind Chess - Voice and TTS</title>
+</head>
+<body>
+    <h1>Blind Chess - Voice Recording, Transcription, and TTS</h1>
+
+    <!-- Recording Section -->
+    <h2>Record and Play Your Voice</h2>
+    <button id="record-btn">Start Recording</button>
+    <button id="play-btn" disabled>Play Recording</button>
+    <p id="status">Not recording</p>
+
+    <!-- Transcription Section -->
+    <h2>Transcribe Your Recording</h2>
+    <form id="transcribe-form" method="POST" enctype="multipart/form-data" action="/transcribe">
+        <input type="file" id="audio-file" name="audio" hidden>
+        <button type="submit" id="transcribe-btn" disabled>Transcribe</button>
+    </form>
+    <p id="transcription-result">Transcription will appear here</p>
+
+    <!-- TTS Section -->
+    <h2>AI Voice - Speak the Transcription</h2>
+    <button id="tts-btn" disabled>Speak Transcription</button>
+
+    <script>
+        // Variables for recording
+        let mediaRecorder;
+        let audioChunks = [];
+        let audioBlob;
+        const recordBtn = document.getElementById("record-btn");
+        const playBtn = document.getElementById("play-btn");
+        const transcribeBtn = document.getElementById("transcribe-btn");
+        const ttsBtn = document.getElementById("tts-btn");
+        const status = document.getElementById("status");
+        const audioFileInput = document.getElementById("audio-file");
+        const transcriptionResult = document.getElementById("transcription-result");
+
+        // Record functionality
+        recordBtn.addEventListener("click", async () => {
+            if (!mediaRecorder || mediaRecorder.state === "inactive") {
+                try {
+                    // Clear previous audio chunks
+                    audioChunks = [];
+                    playBtn.disabled = true;
+                    transcribeBtn.disabled = true;
+
+                    // Reset the audio file input
+                    audioFileInput.value = ""; // Ensure it's ready to accept new recordings
+
+                    // Request microphone access
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+                    // Initialize media recorder
+                    mediaRecorder = new MediaRecorder(stream);
+
+                    // Handle data available event
+                    mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
+
+                    // Handle recording stop event
+                    mediaRecorder.onstop = () => {
+                        audioBlob = new Blob(audioChunks, { type: "audio/wav" });
+                        const file = new File([audioBlob], "audio.wav", { type: "audio/wav" });
+
+                        // Attach file to the hidden input
+                        const dataTransfer = new DataTransfer();
+                        dataTransfer.items.add(file);
+                        audioFileInput.files = dataTransfer.files;
+
+                        status.textContent = "Recording stopped. Ready to play or transcribe.";
+                        playBtn.disabled = false;
+                        transcribeBtn.disabled = false;
+                    };
+
+                    // Start recording
+                    mediaRecorder.start();
+                    status.textContent = "Recording...";
+                    recordBtn.textContent = "Stop Recording";
+                } catch (err) {
+                    console.error("Error accessing microphone:", err);
+                    status.textContent = "Error: Unable to access microphone.";
+                }
+            } else {
+                // Stop recording
+                mediaRecorder.stop();
+                recordBtn.textContent = "Start Recording";
+            }
+        });
+
+        // Play functionality
+        playBtn.addEventListener("click", () => {
+            if (audioBlob) {
+                const audioUrl = URL.createObjectURL(audioBlob);
+                const audio = new Audio(audioUrl);
+                audio.play();
+            }
+        });
+
+        // Transcription submission
+        document.getElementById("transcribe-form").addEventListener("submit", async (event) => {
+            event.preventDefault();
+            const formData = new FormData(event.target);
+
+            try {
+                const response = await fetch("/transcribe", {
+                    method: "POST",
+                    body: formData,
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    transcriptionResult.textContent = `Transcription: ${result.transcription}`;
+                    ttsBtn.disabled = false;
+                    ttsBtn.dataset.transcription = result.transcription;
+                } else {
+                    transcriptionResult.textContent = "Error during transcription.";
+                }
+            } catch (error) {
+                console.error("Transcription error:", error);
+                transcriptionResult.textContent = "An error occurred. Please try again.";
+            }
+        });
+
+        // TTS functionality
+        ttsBtn.addEventListener("click", async () => {
+            const transcription = ttsBtn.dataset.transcription;
+
+            if (transcription) {
+                try {
+                    const response = await fetch("/tts", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                        body: new URLSearchParams({ text: transcription }),
+                    });
+
+                    if (response.ok) {
+                        const blob = await response.blob();
+                        const audioUrl = URL.createObjectURL(blob);
+                        const audio = new Audio(audioUrl);
+                        audio.play();
+                    } else {
+                        alert("Error: Could not process your text.");
+                    }
+                } catch (error) {
+                    console.error("TTS error:", error);
+                    alert("An error occurred. Please try again.");
+                }
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+[0;1;32m●[0m tts_api.service - Flask TTS API
+     Loaded: loaded (]8;;file://ubuntu-4gb-fsn1-1/etc/systemd/system/tts_api.service/etc/systemd/system/tts_api.service]8;;; [0;1;32menabled[0m; preset: [0;1;32menabled[0m)
+     Active: [0;1;32mactive (running)[0m since Sun 2024-12-15 16:39:13 UTC; 5s ago
+   Main PID: 523409 (start_tts.sh)
+      Tasks: 2 (limit: 4543)
+     Memory: 28.1M (peak: 28.3M)
+        CPU: 695ms
+     CGroup: /system.slice/tts_api.service
+             ├─[0;38;5;245m523409 /bin/bash /var/www/chess.saphraxinos.com/start_tts.sh[0m
+             └─[0;38;5;245m523413 /var/www/chess.saphraxinos.com/myenv/bin/python /var/www/chess.saphraxinos.com/tts_api.py[0m
+
+Dec 15 16:39:13 ubuntu-4gb-fsn1-1 systemd[1]: Started tts_api.service - Flask TTS API.
+Dec 15 16:39:14 ubuntu-4gb-fsn1-1 start_tts.sh[523413]: INFO:root:Starting Flask TTS API...
+Dec 15 16:39:14 ubuntu-4gb-fsn1-1 start_tts.sh[523413]:  * Serving Flask app 'tts_api'
+Dec 15 16:39:14 ubuntu-4gb-fsn1-1 start_tts.sh[523413]:  * Debug mode: off
+Dec 15 16:39:14 ubuntu-4gb-fsn1-1 start_tts.sh[523413]: INFO:werkzeug:WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+Dec 15 16:39:14 ubuntu-4gb-fsn1-1 start_tts.sh[523413]:  * Running on all addresses (0.0.0.0)
+Dec 15 16:39:14 ubuntu-4gb-fsn1-1 start_tts.sh[523413]:  * Running on http://127.0.0.1:5000
+Dec 15 16:39:14 ubuntu-4gb-fsn1-1 start_tts.sh[523413]:  * Running on http://49.13.116.109:5000
+Dec 15 16:39:14 ubuntu-4gb-fsn1-1 start_tts.sh[523413]: INFO:werkzeug:Press CTRL+C to quit

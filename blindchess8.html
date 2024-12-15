@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blind Chess - Voice and GPT Integration</title>
+</head>
+<body>
+    <h1>Blind Chess - Voice, Transcription, GPT, and TTS</h1>
+
+    <!-- GPT API Key Input -->
+    <h2>Enter Your GPT API Key</h2>
+    <form id="api-key-form">
+        <label for="api-key-input">GPT API Key:</label>
+        <input type="password" id="api-key-input" required>
+        <button type="submit">Save Key</button>
+    </form>
+    <p id="api-key-status"></p>
+
+    <!-- Recording Section -->
+    <h2>Record and Transcribe Your Voice</h2>
+    <button id="record-btn">Start Recording</button>
+    <button id="play-btn" disabled>Play Recording</button>
+    <p id="status">Not recording</p>
+
+    <h2>Transcription</h2>
+    <button id="submit-recording-btn" disabled>Submit Recording</button>
+    <p id="transcription-result">Transcription will appear here</p>
+
+    <!-- GPT Section -->
+    <h2>GPT Response</h2>
+    <button id="gpt-btn" disabled>Get GPT Response</button>
+    <p id="gpt-response">GPT response will appear here</p>
+
+    <!-- TTS Section -->
+    <h2>AI Voice - Speak the GPT Response</h2>
+    <button id="tts-btn" disabled>Speak GPT Response</button>
+
+    <script>
+        let apiKey = "";
+        let mediaRecorder;
+        let audioChunks = [];
+        let audioBlob;
+        const recordBtn = document.getElementById("record-btn");
+        const playBtn = document.getElementById("play-btn");
+        const submitRecordingBtn = document.getElementById("submit-recording-btn");
+        const gptBtn = document.getElementById("gpt-btn");
+        const ttsBtn = document.getElementById("tts-btn");
+        const status = document.getElementById("status");
+        const transcriptionResult = document.getElementById("transcription-result");
+        const gptResponse = document.getElementById("gpt-response");
+
+        // API Key Form Submission
+        document.getElementById("api-key-form").addEventListener("submit", (event) => {
+            event.preventDefault();
+            apiKey = document.getElementById("api-key-input").value;
+            document.getElementById("api-key-status").textContent = "API Key saved!";
+        });
+
+        // Record functionality
+        recordBtn.addEventListener("click", async () => {
+            if (!mediaRecorder || mediaRecorder.state === "inactive") {
+                try {
+                    audioChunks = [];
+                    playBtn.disabled = true;
+                    submitRecordingBtn.disabled = true;
+
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    mediaRecorder = new MediaRecorder(stream);
+
+                    mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
+
+                    mediaRecorder.onstop = () => {
+                        audioBlob = new Blob(audioChunks, { type: "audio/wav" });
+                        status.textContent = "Recording stopped. Ready to play or submit.";
+                        playBtn.disabled = false;
+                        submitRecordingBtn.disabled = false;
+                    };
+
+                    mediaRecorder.start();
+                    status.textContent = "Recording...";
+                    recordBtn.textContent = "Stop Recording";
+                } catch (err) {
+                    console.error("Error accessing microphone:", err);
+                    status.textContent = "Error: Unable to access microphone.";
+                }
+            } else {
+                mediaRecorder.stop();
+                recordBtn.textContent = "Start Recording";
+            }
+        });
+
+        // Play functionality
+        playBtn.addEventListener("click", () => {
+            if (audioBlob) {
+                const audioUrl = URL.createObjectURL(audioBlob);
+                const audio = new Audio(audioUrl);
+                audio.play();
+            }
+        });
+
+        // Submit Recording for Transcription
+        submitRecordingBtn.addEventListener("click", async () => {
+            const formData = new FormData();
+            formData.append("audio", audioBlob);
+
+            try {
+                const response = await fetch("/transcribe", {
+                    method: "POST",
+                    body: formData,
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    transcriptionResult.textContent = `Transcription: ${result.transcription}`;
+                    gptBtn.disabled = false;
+                    gptBtn.dataset.transcription = result.transcription;
+                } else {
+                    transcriptionResult.textContent = "Error during transcription.";
+                }
+            } catch (error) {
+                console.error("Transcription error:", error);
+                transcriptionResult.textContent = "An error occurred. Please try again.";
+            }
+        });
+
+        // Get GPT Response
+        gptBtn.addEventListener("click", async () => {
+            const transcription = gptBtn.dataset.transcription;
+
+            try {
+                const response = await fetch("/gpt", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ api_key: apiKey, prompt: transcription }),
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    gptResponse.textContent = `GPT Response: ${result.response}`;
+                    ttsBtn.disabled = false;
+                    ttsBtn.dataset.response = result.response;
+                } else {
+                    gptResponse.textContent = "Error: Could not retrieve GPT response.";
+                }
+            } catch (error) {
+                console.error("GPT API error:", error);
+                gptResponse.textContent = "An error occurred. Please try again.";
+            }
+        });
+
+        // TTS Functionality
+        ttsBtn.addEventListener("click", async () => {
+            const responseText = ttsBtn.dataset.response;
+
+            try {
+                const response = await fetch("/tts", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                    body: new URLSearchParams({ text: responseText }),
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const audioUrl = URL.createObjectURL(blob);
+                    const audio = new Audio(audioUrl);
+                    audio.play();
+                } else {
+                    alert("Error: Could not process the GPT response.");
+                }
+            } catch (error) {
+                console.error("TTS error:", error);
+                alert("An error occurred. Please try again.");
+            }
+        });
+    </script>
+</body>
+</html>
