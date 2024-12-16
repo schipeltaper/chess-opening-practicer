@@ -54,8 +54,47 @@ def start_game():
     initial_prompt = (
         f"{base_prompt}\n\n"
         f"You are playing chess as {gpt_color}. "
-        f"{user_color.capitalize()} moves first."
+        f"{user_color.capitalize()} moves first. "
+        f"Remember, provide responses in the specified format."
     )
+
+    # If GPT is white, make its first move
+    if gpt_color == 'white':
+        legal_moves = [move.uci() for move in board.legal_moves]
+        gpt_prompt = (
+            f"{initial_prompt}\n\n"
+            f"The board is empty. Your legal moves are: {', '.join(legal_moves)}. "
+            f"Make your first move."
+        )
+
+        headers = {"Authorization": f"Bearer {os.environ.get('GPT_API_KEY')}"}
+        gpt_response = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers=headers,
+            json={
+                "model": "gpt-3.5-turbo",
+                "messages": [
+                    {"role": "system", "content": "You are a chess-playing assistant."},
+                    {"role": "user", "content": gpt_prompt},
+                ],
+            },
+        )
+
+        if gpt_response.status_code == 200:
+            gpt_data = gpt_response.json()
+            gpt_message = gpt_data['choices'][0]['message']['content']
+
+            try:
+                gpt_move = gpt_message.split('---chess-program---')[1].strip()
+                chess_move = chess.Move.from_uci(gpt_move)
+                if chess_move in board.legal_moves:
+                    board.push(chess_move)
+                    gpt_user_message = gpt_message.split('---tell-the-user---')[1].strip()
+                    return jsonify({"message": "Game started", "user_color": user_color, "gpt_color": gpt_color, "gpt_move": gpt_move, "gpt_message": gpt_user_message})
+            except Exception as e:
+                return jsonify({"error": f"Failed to parse GPT move: {e}"}), 500
+        else:
+            return jsonify({"error": "Failed to get GPT response"}), 500
 
     return jsonify({"message": "Game started", "user_color": user_color, "gpt_color": gpt_color})
 
@@ -63,33 +102,36 @@ def start_game():
 def make_move():
     """Process a move from the user or GPT."""
     global board
-    
+
     data = request.json
     move = data.get('move')
     api_key = data.get('api_key')
-    
+
     if not move or not api_key:
         return jsonify({"error": "Move and API key are required"}), 400
 
     try:
-        # TODO This happens too soon. FIrst I need GPT to interpret the data.
+        # Validate and apply user's move
         chess_move = chess.Move.from_uci(move)
         if chess_move not in board.legal_moves:
             return jsonify({"error": "Invalid move"}), 400
-        
+
         board.push(chess_move)
     except Exception as e:
         return jsonify({"error": f"Invalid move format: {e}"}), 400
 
+    # Check if game is over
     if board.is_game_over():
         return jsonify({"result": board.result(), "message": "Game over!"})
 
-    #TODO What happens when GPT is white and needs to make the first move?
+    # Prepare prompt for GPT
     legal_moves = [move.uci() for move in board.legal_moves]
+    moves_so_far = ", ".join(board.move_stack)
     gpt_prompt = (
         f"{load_base_prompt()}\n\n"
+        f"Here is the game so far: {moves_so_far}. "
         f"Opponent played {move}. Your legal moves are: {', '.join(legal_moves)}. "
-        "Choose your move and respond as instructed."
+        "Choose your move or respond appropriately as instructed."
     )
 
     headers = {"Authorization": f"Bearer {api_key}"}
@@ -104,28 +146,39 @@ def make_move():
             ],
         },
     )
-    
+
     if gpt_response.status_code != 200:
         return jsonify({"error": "Failed to get GPT response"}), 500
 
     gpt_data = gpt_response.json()
     gpt_message = gpt_data['choices'][0]['message']['content']
-    
+
+    # Handle GPT response
+    gpt_move = None
+    user_message = None
+
     try:
-        gpt_move = gpt_message.split('---chess-program---')[1].strip()
-        chess_move = chess.Move.from_uci(gpt_move)
-        if chess_move not in board.legal_moves:
-            return jsonify({"error": "GPT made an invalid move"}), 400
-        
-        board.push(chess_move)
+        if '---chess-program---' in gpt_message:
+            gpt_move = gpt_message.split('---chess-program---')[1].strip()
+
+            chess_move = chess.Move.from_uci(gpt_move)
+            if chess_move not in board.legal_moves:
+                return jsonify({"error": "GPT made an invalid move"}), 400
+
+            board.push(chess_move)
+
+        if '---tell-the-user---' in gpt_message:
+            user_message = gpt_message.split('---tell-the-user---')[1].strip()
+        else:
+            user_message = "GPT did not provide a user message."
     except Exception as e:
         return jsonify({"error": f"GPT response parsing failed: {e}"}), 400
 
-    user_message = gpt_message.split('---tell-the-user---')[1].strip()
-
-    return jsonify({"board": board.fen(), "gpt_move": gpt_move, "user_message": user_message})
-
-
+    return jsonify({
+        "board": board.fen(),
+        "gpt_move": gpt_move,
+        "user_message": user_message,
+    })
 # ---- End Chess Code ----
 
 

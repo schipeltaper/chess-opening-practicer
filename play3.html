@@ -150,6 +150,10 @@
                     },
                 });
 
+
+                console.log("Step 1: Transcription request sent.");
+                console.log("Step 1: Transcription response:", transcribeResponse);
+
                 if (!transcribeResponse.ok) {
                     throw new Error("Failed to transcribe audio.");
                 }
@@ -158,11 +162,18 @@
                 const transcription = transcribeResult.text;
                 transcriptionResult.textContent = `You said: ${transcription}`;
 
+
+                console.log("Step 2: Transcription result:", transcription);
+
                 // Step 2: Submit move to backend
                 const moveResponse = await fetch("/make_move", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ move: transcription, api_key: apiKey }),
+                });
+
+                console.log("Step 3: Move submission request:", {
+                    move: transcription,
                 });
 
                 if (!moveResponse.ok) {
@@ -173,12 +184,28 @@
                 gptResponse.textContent = `GPT says: ${moveResult.user_message}`;
                 status.textContent = "Move processed successfully.";
 
+                console.log("Step 4: Move submission response:", moveResponse);
+
+
                 // Play TTS
                 const ttsResponse = await fetch("/tts", {
                     method: "POST",
                     headers: { "Content-Type": "application/x-www-form-urlencoded" },
                     body: new URLSearchParams({ text: moveResult.user_message }),
                 });
+
+
+                console.log("Step 1: Transcription request sent.");
+                console.log("Step 1: Transcription response:", transcribeResponse);
+                console.log("Step 1: Transcription result:", transcription);
+
+                console.log("Step 2: Move submission request:", {
+                    move: transcription,
+                });
+                console.log("Step 2: Move submission response:", moveResponse);
+
+
+
 
                 if (!ttsResponse.ok) {
                     throw new Error("Failed to process TTS.");
